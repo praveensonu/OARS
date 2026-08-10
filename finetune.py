@@ -265,28 +265,6 @@ def main():
 
     print(f"\nModel and tokenizer saved to {cfg.save_dir}")
 
-    # -----------------------------------------------------
-    # Push to Hugging Face Hub
-    # -----------------------------------------------------
-
-    repo_name = f"rep-shift/{cfg.model_name}_{cfg.dataset}"
-
-    try:
-        model.push_to_hub(
-            repo_name,
-            token=hf_token,
-        )
-
-        tokenizer.push_to_hub(
-            repo_name,
-            token=hf_token,
-        )
-
-        print(f"Pushed model to HuggingFace: {repo_name}")
-
-    except Exception as e:
-        print(f"Could not push to hub: {e}")
-
 
 if __name__ == "__main__":
     main()
