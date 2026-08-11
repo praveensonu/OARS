@@ -190,7 +190,7 @@ For the WARM-UP, RUN:
 ```bash
 python unlearning/ga.py --model_name llama --dataset bio --stage warmup
 python unlearning/npo.py --model_name llama --dataset bio --stage warmup
-python unlearning/snpo.py --model_name llama --dataset bio --stage warmup
+python unlearning/simnpo.py --model_name llama --dataset bio --stage warmup
 ```
 This will automatically run for 1 epoch with the same hyperparameters.
 
