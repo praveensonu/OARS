@@ -119,11 +119,11 @@ class Config_gd:
         )
 
         self.forget_path = (
-            f"./data/{self.dataset}_forget.parquet"
+            f"../data/{self.dataset}_forget.parquet"
         )
 
         self.retain_path = (
-            f"./data/{self.dataset}_retain.parquet"
+            f"../data/{self.dataset}_retain.parquet"
         )
 
 # ---------------------------------------------------------
@@ -287,16 +287,7 @@ def main():
         cfg.model_id,
         token=hf_token,
     )
-
-    if cfg.model_name == "llama":
-
-        tokenizer.pad_token = (
-            "<|finetune_right_pad_id|>"
-        )
-
-    elif cfg.model_name in ["qwen", "olmo"]:
-
-        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token = tokenizer.eos_token
 
     # -----------------------------------------------------
     # Load base model
