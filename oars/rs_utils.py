@@ -514,3 +514,305 @@ def extract_and_save_pre_representations(
     )
 
     return pre_df
+
+
+def select_retain_by_clustered_relative_shift(
+    df,
+    *,
+    retain_size,
+    n_clusters,
+    pre_representation_column="h_pre",
+    relative_shift_column="r_i",
+    type_column="type",
+    excluded_types=("seed", "forget"),
+    cluster_column="retain_cluster",
+    random_state=42,
+    kmeans_n_init=10,
+):
+
+    import numpy as np
+
+    from sklearn.cluster import KMeans
+    from sklearn.preprocessing import normalize
+
+    # -----------------------------------------------------
+    # Basic validation
+    # -----------------------------------------------------
+
+    if retain_size <= 0:
+        raise ValueError(
+            "retain_size must be greater than zero."
+        )
+
+    if n_clusters <= 0:
+        raise ValueError(
+            "n_clusters must be greater than zero."
+        )
+
+    if retain_size % n_clusters != 0:
+
+        raise ValueError(
+            "retain_size must be exactly divisible "
+            "by n_clusters. "
+            f"retain_size={retain_size}, "
+            f"n_clusters={n_clusters}"
+        )
+
+    required_columns = {
+        pre_representation_column,
+        relative_shift_column,
+        type_column,
+    }
+
+    missing = required_columns.difference(
+        df.columns
+    )
+
+    if missing:
+
+        raise KeyError(
+            f"Missing required columns: "
+            f"{sorted(missing)}"
+        )
+
+    working_df = (
+        df.copy()
+        .reset_index(drop=True)
+    )
+
+    # -----------------------------------------------------
+    # Remove seed + forget
+    # -----------------------------------------------------
+
+    excluded_types_normalized = {
+        str(value).strip().lower()
+        for value in excluded_types
+    }
+
+    normalized_types = (
+        working_df[type_column]
+        .astype(str)
+        .str.strip()
+        .str.lower()
+    )
+
+    retain_pool = (
+        working_df.loc[
+            ~normalized_types.isin(
+                excluded_types_normalized
+            )
+        ]
+        .copy()
+        .reset_index(drop=True)
+    )
+
+    if len(retain_pool) == 0:
+
+        raise ValueError(
+            "No samples remain after excluding "
+            "seed and forget samples."
+        )
+
+    if n_clusters > len(retain_pool):
+
+        raise ValueError(
+            f"n_clusters={n_clusters} exceeds "
+            f"retain pool size={len(retain_pool)}."
+        )
+
+    if retain_size > len(retain_pool):
+
+        raise ValueError(
+            f"retain_size={retain_size} exceeds "
+            f"retain pool size={len(retain_pool)}."
+        )
+
+    # -----------------------------------------------------
+    # Validate r_i
+    # -----------------------------------------------------
+
+    retain_pool[
+        relative_shift_column
+    ] = pd.to_numeric(
+        retain_pool[relative_shift_column],
+        errors="coerce",
+    )
+
+    if not np.isfinite(
+        retain_pool[
+            relative_shift_column
+        ].to_numpy(dtype=np.float32)
+    ).all():
+
+        raise ValueError(
+            f"{relative_shift_column} contains "
+            "NaN or infinite values."
+        )
+
+    # -----------------------------------------------------
+    # Stack h_pre
+    # -----------------------------------------------------
+
+    try:
+
+        h_pre = np.stack(
+            retain_pool[
+                pre_representation_column
+            ].to_numpy()
+        ).astype(
+            np.float32
+        )
+
+    except ValueError as error:
+
+        raise ValueError(
+            f"Could not stack "
+            f"{pre_representation_column}. "
+            "All vectors must have equal dimension."
+        ) from error
+
+    if h_pre.ndim != 2:
+
+        raise ValueError(
+            "Pre-unlearning representations "
+            "must form a 2D matrix."
+        )
+
+    if not np.isfinite(h_pre).all():
+
+        raise ValueError(
+            f"{pre_representation_column} "
+            "contains NaN or inf."
+        )
+
+    pre_norms = np.linalg.norm(
+        h_pre,
+        ord=2,
+        axis=1,
+    )
+
+    if np.any(pre_norms == 0):
+
+        raise ValueError(
+            "At least one pre representation "
+            "has zero norm."
+        )
+
+    # -----------------------------------------------------
+    # Normalize
+    # -----------------------------------------------------
+
+    h_pre_normalized = normalize(
+        h_pre,
+        norm="l2",
+        axis=1,
+    ).astype(
+        np.float32
+    )
+
+    # -----------------------------------------------------
+    # K-means
+    # -----------------------------------------------------
+
+    kmeans = KMeans(
+        n_clusters=n_clusters,
+        random_state=random_state,
+        n_init=kmeans_n_init,
+    )
+
+    retain_pool[
+        cluster_column
+    ] = kmeans.fit_predict(
+        h_pre_normalized
+    ).astype(
+        np.int32
+    )
+
+    # -----------------------------------------------------
+    # Equal selection per cluster
+    # -----------------------------------------------------
+
+    samples_per_cluster = (
+        retain_size // n_clusters
+    )
+
+    selected_clusters = []
+
+    for cluster_id in range(
+        n_clusters
+    ):
+
+        cluster_df = (
+            retain_pool.loc[
+                retain_pool[
+                    cluster_column
+                ] == cluster_id
+            ]
+            .sort_values(
+                relative_shift_column,
+                ascending=False,
+                kind="mergesort",
+            )
+            .copy()
+        )
+
+        if len(cluster_df) < samples_per_cluster:
+
+            raise ValueError(
+                f"Cluster {cluster_id} contains "
+                f"{len(cluster_df)} samples, "
+                f"but {samples_per_cluster} "
+                "are required."
+            )
+
+        selected_cluster = (
+            cluster_df
+            .head(
+                samples_per_cluster
+            )
+            .copy()
+        )
+
+        selected_cluster[
+            "cluster_selection_rank"
+        ] = np.arange(
+            1,
+            samples_per_cluster + 1,
+            dtype=np.int64,
+        )
+
+        selected_clusters.append(
+            selected_cluster
+        )
+
+    retain_df = pd.concat(
+        selected_clusters,
+        axis=0,
+        ignore_index=True,
+    )
+
+    retain_df = (
+        retain_df
+        .sort_values(
+            by=[
+                cluster_column,
+                relative_shift_column,
+            ],
+            ascending=[
+                True,
+                False,
+            ],
+            kind="mergesort",
+        )
+        .reset_index(drop=True)
+    )
+
+    if len(retain_df) != retain_size:
+
+        raise RuntimeError(
+            f"Selected {len(retain_df)} "
+            f"samples instead of "
+            f"{retain_size}."
+        )
+
+    return retain_df
