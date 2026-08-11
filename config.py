@@ -49,48 +49,95 @@ class Config_ft:
             )
 
 
-class Config_repair:
-    def __init__(self):
-        super(Config_repair, self).__init__()
-        self.model_id       = 'meta-llama/Llama-3.1-8B-Instruct'
-        self.loss_type      = 'snpo'
-        self.selection       = 'ri'
-        self.dataset        = 'muse'
-        self.model_name    = 'qwen'
-        self.adaptor_path    = f'./outputs/unlearning/{self.model_name}_{self.loss_type}_{self.dataset}_no_model'
-        self.lr             = 1e-5
-        self.batch_size     = 2
-        self.gradient_accumulation_steps = 4
-        self.max_steps      = 100
-        self.save_steps     = 20
-        self.overwrite_dir  = True
-        self.save_dir       = f'./outputs/repair/{self.model_name}_{self.loss_type}_{self.dataset}_{self.selection}'
-        self.max_length     = 512
-        self.data_path      = f'./data/retain/{self.model_name}_{self.loss_type}_{self.dataset}_{self.selection}.parquet'
 
+class Config_repair_auto:
 
-class Config_repair_auto: #for repair auto if we want to do multiple, use selection not model. it will autimatically run on the models
     MODEL_IDS = {
-        'llama': 'meta-llama/Llama-3.1-8B-Instruct',
-        'qwen': 'Qwen/Qwen2.5-3B-Instruct',
-        'olmo': 'allenai/OLMo-2-0425-1B-Instruct',
+        "llama": "meta-llama/Llama-3.1-8B-Instruct",
+        "qwen": "Qwen/Qwen2.5-3B-Instruct",
+        "olmo": "allenai/OLMo-2-0425-1B-Instruct",
     }
 
-    def __init__(self, model_name='llama', loss_type='ga'):
+    def __init__(
+        self,
+        model_name,
+        loss_type,
+        dataset,
+        selection,
+    ):
         super(Config_repair_auto, self).__init__()
-        self.model_name      = model_name
-        self.model_id        = self.MODEL_IDS[model_name]
-        self.loss_type       = loss_type
-        self.selection        = 'randri'  # 'high'
-        self.dataset         = 'bio'
-        self.adaptor_path     = f'./outputs/unlearning/{self.model_name}_{self.loss_type}_{self.dataset}_no_model/checkpoint-20'
-        self.lr              = 1e-5
-        self.batch_size      = 2
+
+        # -------------------------------------------------
+        # Experiment identifiers
+        # -------------------------------------------------
+
+        self.model_name = model_name
+        self.model_id = self.MODEL_IDS[model_name]
+
+        self.loss_type = loss_type
+        self.dataset = dataset
+        self.selection = selection
+
+        # -------------------------------------------------
+        # Training configuration
+        # -------------------------------------------------
+
+        self.lr = 1e-5
+
+        self.batch_size = 2
+
         self.gradient_accumulation_steps = 4
-        self.max_steps       = 100
-        self.save_steps      = 20
-        self.overwrite_dir   = True
-        self.save_dir        = f'./outputs/repair/{self.model_name}_{self.loss_type}_{self.dataset}_{self.selection}'
-        self.max_length      = 512
-        #self.data_path       = f'./data/retain_sets/{self.model_name}_{self.dataset}_{self.selection}.parquet'
-        self.data_path      = f'./data/retain_sets/{self.model_name}_{self.loss_type}_{self.dataset}_{self.selection}.parquet' #for representation shift
+
+        self.max_steps = 100
+
+        self.save_steps = 20
+
+        self.overwrite_dir = True
+
+        self.max_length = 512
+
+        # -------------------------------------------------
+        # Unlearned adapter
+        # -------------------------------------------------
+
+        self.adaptor_path = (
+            f"./outputs/unlearning/"
+            f"{self.model_name}_{self.loss_type}_"
+            f"{self.dataset}_no_model/"
+            f"checkpoint-20"
+        )
+
+        # -------------------------------------------------
+        # Repair output
+        # -------------------------------------------------
+
+        self.save_dir = (
+            f"./outputs/repair/"
+            f"{self.model_name}_{self.loss_type}_"
+            f"{self.dataset}_{self.selection}"
+        )
+
+        # -------------------------------------------------
+        # Repair dataset
+        # -------------------------------------------------
+
+        if self.selection in ["raslik", "emb", "random"]:
+
+            self.data_path = (
+                f"./data/retain_sets/"
+                f"{self.model_name}_{self.dataset}_"
+                f"{self.selection}.parquet"
+            )
+
+        elif self.selection == "oars":
+
+            self.data_path = (
+                f"./data/retain_sets/"
+                f"{self.model_name}_{self.loss_type}_"
+                f"{self.dataset}_{self.selection}.parquet"
+            )
+
+        else:
+            raise ValueError(
+                f"Unknown selection method: {self.selection}"
+            )
